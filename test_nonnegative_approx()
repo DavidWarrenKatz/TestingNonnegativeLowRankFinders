@@ -1,0 +1,102 @@
+function test_nonnegative_approx()
+% This function test the accruacy of 8 of the solvers from the NMFLibrary
+% that can be found on https://github.com/hiroyuki-kasai/NMFLibrary/pulls
+% This function first generates a 100 by 100 random symmetric non negative 
+% matrix V. With probability one, the rank of V is 100. The function then 
+% finds the best rank r approximation of V with 8 different solvers with r
+% varying between 1 and 200. It then calculates the error of the solvers
+% after 100 iterations for each r and displays the error vs ranks graph. 
+% The lack of decrease at 100 indicates that the solvers are NOT finding
+% the unique low rank approximation and perhaps cannot be used for latent
+% variable analysis to detect the rank in a noisy dataset.
+
+    clc;
+    clear;
+    close all;
+
+    %% generate random symmetric mxm matrix V      
+    m = 100;
+    d = 1000000*rand(m,1);
+    t = triu(bsxfun(@min,d,d.').*rand(m),1);
+    V = diag(d)+t+t.';
+
+    %% set initial parameters
+    %% n = the number of ranks to be tested, max_epoch is the maximum number of iterations
+    n = 200;
+    max_epoch = 100;
+    options = [];
+    options.verbose = 1;
+    options.max_epoch = max_epoch;
+
+    %create errors vectors and ranks vector
+    errors_mu = zeros(1,n);
+    errors_hals = zeros(1,n);
+    errors_nmf_probs = zeros(1,n);
+    errors_symm_anls = zeros(1,n);
+    errors_symm_newton = zeros(1,n);
+    errors_symm_halsacc = zeros(1,n);
+    errors_snpa = zeros(1,n);
+    errors_spa = zeros(1,n);
+    errors_rnmnew = zeros(1,n);
+    ranks = 1:n;
+
+    for i = 1:n
+    
+        %% MU factroization - high error
+        %1
+        options.alg = 'mu';
+        [~, infos_mu] = fro_mu_nmf(V, i, options);
+        errors_mu(1, i) = infos_mu.cost(max_epoch);
+        %% Hierarchical ALS
+        % 2
+        options.alg = 'hals';
+        [~, infos_hals] = als_nmf(V, i, options);
+        errors_hals(1, i) = infos_hals.cost(max_epoch);
+        %% NMF Probs - not workings at all
+        % 3
+        options.verbose = 2;
+        [~, infos_nmf_prob] = prob_nmf(V, i, options);
+        errors_nmf_probs(1, i) = infos_nmf_prob.cost(max_epoch);
+        %% Symm-ANLS - takes a long time
+        % 4
+        options.alpha = 0.6;
+        options.calc_symmetry = true; 
+        options.verbose = 1;
+        [~, infos_symm_anls] = symm_anls(V, i, options);
+        errors_symm_anls(1, i) = infos_symm_anls.cost(max_epoch);
+        %% Symm-Newton
+        % 5
+        [~, infos_symm_newton] = symm_newton(V, i, options);
+        errors_symm_newton(1, i) = infos_symm_newton.cost(max_epoch);
+        %% Symm-Hals
+        % 6
+        options.lambda = 0.6;    
+        [~, infos_symm_halsacc] = symm_halsacc(V, i, options);
+        errors_symm_halsacc(1, i) = infos_symm_halsacc.cost(max_epoch);
+        %% Separable SPA
+        % 7
+        [~, info_spa] = spa(V, i, options); 
+        errors_spa(1, i) = info_spa.cost(max_epoch);
+        %% Separable snpa
+        % 8
+        [~, info_snpa] = snpa(V, i, options);
+        errors_snpa(1, i) = info_snpa.cost(max_epoch);
+        %% rnmnew
+        % 9
+        [~, info_rnmnew] = recursive_nmu(V, i, options);
+        errors_rnmnew(1, i) = info_rnmnew.cost(max_epoch);
+
+    end
+    
+   %% plot
+   %% plot the ranks vs errors graph for each of the above solvers
+    figure
+    plot(ranks, errors_mu, ranks, errors_hals, ranks, errors_nmf_probs, ranks, errors_symm_anls, ranks, errors_symm_newton, ranks, errors_symm_halsacc, ranks, errors_spa, ranks, errors_snpa, ranks, errors_rnmnew)
+    legend({'MU','HALS', 'NMF Probs', 'Symm ANLS', 'Symm Newton', 'Symm Halsacc', 'SPA', 'SNPA', 'rnmnew'},'Location','southwest')
+    xlabel('rank') 
+    ylabel('error of rank r approximation after 100 iterations') 
+    title('Ranks vs Error graphs for 8 solvers from hiroyuki-kasai/NMFLibrary')
+    str = 'There should be a significant decrease in the graph at 100 since the radomly generated matrix is 100 by 100 and thus is rank 100';
+    annotation('textbox',dim,'String',str,'FitBoxToText','on');
+
+end
